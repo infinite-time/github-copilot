@@ -3,6 +3,22 @@ marp: true
 theme: default
 paginate: true
 title: "GitHub Copilot: Tokens & Model Selection"
+style: |
+  section {
+    font-size: 21px;
+    padding: 48px 56px;
+    justify-content: flex-start;
+  }
+  section.lead { justify-content: center; }
+  h1 { font-size: 38px; }
+  h2 { font-size: 30px; margin-bottom: 0.4em; }
+  p, li { line-height: 1.35; margin: 0.25em 0; }
+  ul, ol { margin: 0.3em 0; }
+  pre { font-size: 0.72em; line-height: 1.3; margin: 0.4em 0; }
+  code { font-size: 0.95em; }
+  table { font-size: 0.82em; }
+  th, td { padding: 3px 8px; }
+  blockquote { font-size: 0.9em; margin: 0.4em 0; }
 ---
 
 # GitHub Copilot
