@@ -5,5 +5,5 @@
 # file is optional. It pins repo-wide defaults and makes it easy to switch
 # themes later: drop a custom CSS into a `themes/` folder and point `theme` at it.
 
-theme: default          # built-in Marp theme (default | gaia | uncover)
+theme: uncover          # built-in Marp theme (default | gaia | uncover)
 allowLocalFiles: true   # let PDF/PPTX export read local images if you add any
