@@ -1,0 +1,9 @@
+# .marprc.yml — repo-wide Marp CLI configuration
+# Docs: https://github.com/marp-team/marp-cli#configuration-file
+#
+# index.md already carries front matter (marp: true, theme: default), so this
+# file is optional. It pins repo-wide defaults and makes it easy to switch
+# themes later: drop a custom CSS into a `themes/` folder and point `theme` at it.
+
+theme: default          # built-in Marp theme (default | gaia | uncover)
+allowLocalFiles: true   # let PDF/PPTX export read local images if you add any
