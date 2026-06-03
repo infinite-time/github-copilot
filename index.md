@@ -547,17 +547,6 @@ Both families are strong; differences are usually **style and cost**, not capabi
 
 ---
 
-## References
-
-- GitHub Copilot — *Models and pricing* (per-token rates, categories)
-- GitHub Copilot — *Usage-based billing for individuals / organizations*
-- GitHub Blog — *Copilot is moving to usage-based billing* (June 1, 2026)
-- GitHub Copilot — *Auto model selection* & *AI model comparison*
-
-*Pricing and model lineup change frequently — verify against the live docs before quoting figures externally.*
-
----
-
 # Questions?
 
 **Tokens are the new unit of cost. Model choice is the new dial.**
