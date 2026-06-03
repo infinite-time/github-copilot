@@ -1,0 +1,409 @@
+---
+marp: true
+theme: default
+paginate: true
+title: "GitHub Copilot: Tokens & Model Selection"
+---
+
+# GitHub Copilot
+## Tokens, Token Sizing & Model Selection
+
+A practical session for software engineers
+
+*Why your model choice now shows up directly on the bill.*
+
+---
+
+## Why this matters now
+
+As of **June 1, 2026**, GitHub Copilot moved from *premium requests* to **usage-based billing**.
+
+- Every interaction is billed by **token consumption** — input, output, and cached tokens.
+- Token totals are converted into **GitHub AI Credits**, where **1 AI credit = $0.01 USD**.
+- Cost of any interaction = **(which model) × (how many tokens)**.
+
+> Code completions / next-edit suggestions are **not** billed in credits — they stay unlimited on paid plans. Billing applies to **Chat, agents, code review, CLI, etc.**
+
+This session is about understanding the two levers you control: **tokens** and **model**.
+
+---
+
+## Agenda
+
+1. What is a token? What is "token size"?
+2. Code examples — how token counts vary
+3. The three token buckets: input, output, cached
+4. Context windows
+5. How model selection changes token cost
+6. Model categories & current pricing
+7. Which model for which task (with code + output differences)
+8. Decision trees: GPT family & Claude family
+9. Practical ways to cut token usage
+
+---
+
+## What is a token?
+
+A **token** is the unit a language model reads and writes. It is *not* a word and *not* a character — it's a chunk produced by the model's tokenizer (typically sub-word "byte-pair encoding").
+
+Rough rules of thumb for English text:
+
+| Unit | Approx. tokens |
+|------|----------------|
+| 1 token | ~4 characters |
+| 1 token | ~0.75 words |
+| 100 tokens | ~75 words |
+| 1,000 tokens | ~750 words (~1.5 pages) |
+
+**Code is denser than prose** — punctuation, indentation, camelCase, and operators each tend to cost extra tokens, so code often runs closer to **3 characters per token**.
+
+---
+
+## "Token size" — two meanings to keep separate
+
+People say "token size" to mean different things. Be precise:
+
+1. **Token count of a payload** — *how many tokens* a given prompt, file, or response is.
+   *e.g. "This 200-line file is ~2,400 tokens."*
+
+2. **Context window size** — the *maximum* tokens a model can hold in one request (input + output combined).
+   *e.g. "This model has a 200K-token context window."*
+
+This deck mostly means **(1)** when we say "how big is this in tokens," and calls out **(2)** explicitly as "context window."
+
+---
+
+## Code example: how token count varies (1/2)
+
+The same logic in different forms produces very different token counts.
+
+**A — Tiny snippet (~12 tokens)**
+```python
+def add(a, b):
+    return a + b
+```
+
+**B — Same idea, verbose + typed + docstring (~70–80 tokens)**
+```python
+def add(first_value: int, second_value: int) -> int:
+    """Return the sum of two integers.
+
+    Args:
+        first_value: The first addend.
+        second_value: The second addend.
+    """
+    return first_value + second_value
+```
+
+Naming, type hints, and docstrings are *real tokens* in every request.
+
+---
+
+## Code example: how token count varies (2/2)
+
+**C — A whole file pasted as context (~1,800–2,500 tokens)**
+```text
+# 250 lines of a service module, imports, comments, and tests
+# pasted into chat as "here's my file, fix the bug"
+```
+
+**D — A repo-wide agent task (tens of thousands of tokens)**
+```text
+"Refactor the auth module and update all call sites"
+→ agent reads many files, plans, edits, re-reads → 30k–100k+ tokens
+```
+
+**Takeaway:** the *prompt you type* is rarely the expensive part. The **files, context, and agent tool-loops** dominate token usage.
+
+---
+
+## Counting tokens yourself
+
+You can measure before you send. Example using OpenAI's `tiktoken`:
+
+```python
+import tiktoken
+
+enc = tiktoken.get_encoding("o200k_base")  # GPT-5 family encoding
+
+snippet = """def add(a, b):
+    return a + b
+"""
+
+tokens = enc.encode(snippet)
+print(len(tokens))        # ~12
+print(tokens[:5])         # the integer token IDs
+```
+
+Different model families use **different tokenizers**, so the *same* text can have slightly different counts on GPT vs Claude vs Gemini. Treat counts as **estimates**, not exact billing.
+
+---
+
+## The three token buckets
+
+Every billable interaction is metered in up to three categories:
+
+| Bucket | What it is | Relative cost |
+|--------|-----------|---------------|
+| **Input** | Everything sent *to* the model: your prompt, files, chat history, system instructions | Base rate |
+| **Output** | Everything the model *generates*: code, explanations, tool calls | **Usually 4–6× the input rate** |
+| **Cached input** | Repeated context the model reuses across turns | **Heavily discounted (~10× cheaper)** |
+
+**Implication:** long, chatty answers cost more than long prompts. Asking for "just the diff" instead of "the whole file rewritten" directly cuts the most expensive bucket.
+
+---
+
+## Output is the expensive bucket — example
+
+Using **GPT-5.4** rates ($2.50 input / $15.00 output per 1M tokens):
+
+| Scenario | Input | Output | Cost |
+|----------|-------|--------|------|
+| Ask: "fix this 2K-token file, return only the changed lines" | 2,000 | 300 | $0.0095 |
+| Ask: "fix this 2K-token file, rewrite the whole thing" | 2,000 | 2,000 | $0.035 |
+
+Same input, same fix — the second costs **~3.7× more** purely because you asked for more **output tokens**.
+
+> Prompting for minimal, targeted output is one of the cheapest optimizations available.
+
+---
+
+## Context windows
+
+The **context window** is the hard ceiling on tokens per request (input + output together).
+
+- Larger windows let you paste more code / more files, but **you pay for every token you put in there**.
+- Some models apply a **long-context surcharge** past a threshold:
+  - GPT-5.4 standard pricing applies to prompts **≤ 272K tokens**.
+  - Gemini Pro tiers' listed pricing applies to prompts **≤ 200K tokens**.
+
+**Mental model:** the context window is the size of the desk. Tokens are what you pile on it. A bigger desk doesn't make the paper free.
+
+---
+
+## How model selection changes token cost
+
+Two requests with **identical** token counts can cost very differently depending on the model.
+
+Example: an interaction consuming **10K input + 2K output tokens**.
+
+| Model | Category | Approx. cost |
+|-------|----------|--------------|
+| GPT-5 mini | Lightweight | ~$0.0065 |
+| GPT-4.1 | Versatile | ~$0.036 |
+| Claude Sonnet 4.6 | Versatile | ~$0.060 |
+| Claude Opus 4.8 | Powerful | ~$0.100 |
+| GPT-5.5 | Powerful | ~$0.110 |
+
+*Same work, ~17× cost spread.* The model is the **biggest single multiplier** on your bill.
+
+---
+
+## Model categories
+
+GitHub groups models into three tiers. This is the most useful lens for choosing:
+
+| Category | Built for | Cost | Examples |
+|----------|-----------|------|----------|
+| **Lightweight** | Fast, cheap, high-volume, simple tasks | $ | GPT-5 mini, GPT-5.4 nano/mini, Gemini Flash, Claude Haiku 4.5 |
+| **Versatile** | The everyday default — good balance | $$ | GPT-4.1, GPT-5.2, Claude Sonnet 4.6, Raptor mini |
+| **Powerful** | Hard reasoning, large refactors, agents | $$$ | GPT-5.5, GPT-5.x-Codex, Claude Opus 4.x, Gemini Pro |
+
+**Auto model selection** lets Copilot pick a tier based on prompt complexity — a safe default if you don't want to think about it per-prompt.
+
+---
+
+## Current per-token pricing — OpenAI & Anthropic
+
+Per **1M tokens** (1 AI credit = $0.01). Source: GitHub Copilot docs, June 2026.
+
+**OpenAI**
+
+| Model | Category | Input | Cached | Output |
+|-------|----------|-------|--------|--------|
+| GPT-5 mini *(included)* | Lightweight | $0.25 | $0.025 | $2.00 |
+| GPT-4.1 *(included)* | Versatile | $2.00 | $0.50 | $8.00 |
+| GPT-5.4 | Versatile | $2.50 | $0.25 | $15.00 |
+| GPT-5.x-Codex | Powerful | $1.75 | $0.175 | $14.00 |
+| GPT-5.5 | Powerful | $5.00 | $0.50 | $30.00 |
+
+**Anthropic** *(also has a separate cache-write cost)*
+
+| Model | Category | Input | Cached | Output |
+|-------|----------|-------|--------|--------|
+| Claude Haiku 4.5 | Versatile | $1.00 | $0.10 | $5.00 |
+| Claude Sonnet 4.6 | Versatile | $3.00 | $0.30 | $15.00 |
+| Claude Opus 4.8 | Powerful | $5.00 | $0.50 | $25.00 |
+
+---
+
+## Which model for which task
+
+| Task | Good fit | Why |
+|------|----------|-----|
+| Autocomplete, boilerplate, simple Q&A | **Lightweight** (GPT-5 mini, Haiku 4.5) | Fast & cheap; quality difference is negligible here |
+| Everyday coding, explain code, write tests | **Versatile** (GPT-4.1, Sonnet 4.6, GPT-5.2) | Best balance of quality and cost |
+| Multi-file refactor, debugging tricky logic, architecture | **Powerful** (Opus 4.x, GPT-5.5) | Deeper reasoning earns its higher token rate |
+| Long agentic / coding-agent runs | **Codex / Opus** | Strong tool-use & long-horizon planning |
+| Large-context review across many files | **Pro / large-window models** | Mind the long-context surcharge |
+
+Rule: **start cheap, escalate only when the cheap model fails.**
+
+---
+
+## Code example: a simple task (use Lightweight)
+
+**Prompt:** *"Write a function to check if a string is a palindrome."*
+
+A lightweight model nails this on the first try:
+
+```python
+def is_palindrome(s: str) -> bool:
+    cleaned = "".join(c.lower() for c in s if c.isalnum())
+    return cleaned == cleaned[::-1]
+```
+
+There is **no quality benefit** to spending a Powerful model here. The output is essentially identical — you'd just pay 10–15× more per token for the same answer.
+
+✅ **GPT-5 mini / Claude Haiku 4.5** is the right call.
+
+---
+
+## Code example: a hard task (use Powerful)
+
+**Prompt:** *"This concurrent cache has a race condition under high load. Find and fix it."*
+
+```python
+class Cache:
+    def __init__(self):
+        self._data = {}
+
+    def get_or_compute(self, key, compute):
+        if key not in self._data:          # check
+            self._data[key] = compute()    # ...and set — not atomic!
+        return self._data[key]
+```
+
+Here the model's **reasoning depth changes the answer** — this is where a Powerful model pays off.
+
+---
+
+## How output differs by model (illustrative)
+
+Same race-condition prompt, representative behavior:
+
+**Lightweight model** — pattern-matches "add a lock," may miss the double-check:
+```python
+import threading
+class Cache:
+    def __init__(self):
+        self._data, self._lock = {}, threading.Lock()
+    def get_or_compute(self, key, compute):
+        with self._lock:                 # correct but serializes ALL reads
+            if key not in self._data:
+                self._data[key] = compute()
+            return self._data[key]
+```
+
+**Powerful model** — reasons about contention and uses double-checked locking + per-key locks, *and explains the trade-off* (lock granularity, thundering herd). More output tokens, but a materially better answer.
+
+> The difference shows up on **hard, ambiguous, or multi-step** problems — rarely on simple ones.
+
+---
+
+## Decision tree — GPT family
+
+```text
+START: What are you doing?
+│
+├─ Autocomplete / boilerplate / quick Q&A
+│     └─► GPT-5 mini  (or GPT-5.4 nano)        [Lightweight, cheapest]
+│
+├─ Everyday coding / explain / tests / refactor one file
+│     └─► GPT-4.1  (included) or GPT-5.2        [Versatile, balanced]
+│
+├─ Agentic coding / long autonomous coding sessions
+│     └─► GPT-5.x-Codex                         [Powerful, tuned for code agents]
+│
+└─ Hardest reasoning / architecture / gnarly debugging
+      └─► GPT-5.5                               [Powerful, highest cost]
+
+Not sure? → Auto model selection lets Copilot pick the tier.
+```
+
+---
+
+## Decision tree — Claude family
+
+```text
+START: What are you doing?
+│
+├─ High-volume, simple, latency-sensitive tasks
+│     └─► Claude Haiku 4.5                      [cheapest Claude]
+│
+├─ Everyday coding / explain / tests / single-file refactor
+│     └─► Claude Sonnet 4.6                     [the workhorse — best default]
+│
+├─ Multi-file refactor / deep debugging / agentic work
+│     └─► Claude Opus 4.8                       [Powerful, deepest reasoning]
+│
+└─ Cost-sensitive but need >Haiku quality
+      └─► Sonnet 4.6  (don't jump straight to Opus)
+
+Rule of thumb: Sonnet for most work; reach for Opus only when Sonnet struggles.
+```
+
+---
+
+## Cross-family quick guide
+
+If you're choosing *between* families for the same job:
+
+| Need | OpenAI pick | Anthropic pick |
+|------|-------------|----------------|
+| Cheapest viable | GPT-5 mini | Claude Haiku 4.5 |
+| Balanced daily driver | GPT-4.1 / GPT-5.2 | Claude Sonnet 4.6 |
+| Code-agent / autonomous | GPT-5.x-Codex | Claude Opus 4.8 |
+| Maximum reasoning | GPT-5.5 | Claude Opus 4.8 |
+
+Both families are strong; differences are usually **style and cost**, not capability, within the same tier. Pick the tier first, the family second.
+
+---
+
+## Practical ways to cut token usage
+
+- **Match the model to the task** — biggest lever. Don't default to a Powerful model.
+- **Ask for diffs, not full rewrites** — output tokens are the priciest bucket.
+- **Trim context** — paste the relevant function, not the whole file/repo.
+- **Lean on caching** — keep reused context stable so it hits the cached (discounted) rate.
+- **Use Auto selection** for mixed workloads so simple prompts don't land on expensive models.
+- **Keep code completions for completions** — they're free; don't open Chat for a one-line suggestion.
+
+---
+
+## Key takeaways
+
+1. A **token** ≈ ¾ of a word; **code is denser**. "Token size" means either a payload's token count *or* a model's context window — keep them distinct.
+2. Billing = **model × tokens**, split into **input / output / cached**, converted to AI Credits ($0.01 each).
+3. **Output tokens are the expensive bucket** — prompt for concise, targeted answers.
+4. **Model choice is the largest cost multiplier** — up to ~17× for identical work.
+5. **Start cheap, escalate on failure.** Lightweight for simple, Versatile for daily, Powerful for hard.
+
+---
+
+## References
+
+- GitHub Copilot — *Models and pricing* (per-token rates, categories)
+- GitHub Copilot — *Usage-based billing for individuals / organizations*
+- GitHub Blog — *Copilot is moving to usage-based billing* (June 1, 2026)
+- GitHub Copilot — *Auto model selection* & *AI model comparison*
+
+*Pricing and model lineup change frequently — verify against the live docs before quoting figures externally.*
+
+---
+
+# Questions?
+
+**Tokens are the new unit of cost. Model choice is the new dial.**
+
+Thank you.
