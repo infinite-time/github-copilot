@@ -311,6 +311,162 @@ class Cache:
 
 ---
 
+## How to choose a model — a repeatable process
+
+Run every task through four questions, top to bottom. Stop at the first "yes."
+
+1. **Is there one obvious, verifiable answer?** (boilerplate, rename, format, simple regex)
+   → **Lightweight.** Spending more buys nothing.
+2. **Is it everyday coding needing some judgment?** (a feature, a test suite, explain a file)
+   → **Versatile.** This is your default — most work lands here.
+3. **Does correctness hinge on multi-step reasoning or subtle edge cases?** (concurrency, security, tricky algorithms)
+   → **Powerful.**
+4. **Is it a long, autonomous, multi-file agent run?**
+   → **Codex / Opus.**
+
+**Cost check before you commit:** *"Would the cheaper tier plausibly get this right?"* If yes, start there and escalate only on failure.
+
+---
+
+## Selection in practice — five scenarios
+
+| You're about to… | Pick | Why |
+|------------------|------|-----|
+| Rename a variable across one file | Lightweight | Mechanical; no reasoning needed |
+| Add a REST endpoint to an existing controller | Versatile | Pattern-following with light judgment |
+| Generate a full test suite with edge cases | Versatile → Powerful | Versatile usually fine; escalate if coverage is shallow |
+| Debug an intermittent production race condition | Powerful | Needs hypothesis-forming across states |
+| Migrate a 40-file module to a new API | Codex / Opus (agent) | Long-horizon, many files, tool use |
+| Draft a commit message | Lightweight | Short, low-stakes, cheap |
+
+The pattern: **most rows are not "Powerful."** Reserve the expensive tier for the rows that actually need it.
+
+---
+
+## Output impact: writing unit tests
+
+**Prompt:** *"Write tests for this discount function."*
+
+```python
+def apply_discount(price, pct):
+    return price * (1 - pct / 100)
+```
+
+**Lightweight** — covers the happy path and stops:
+
+```python
+def test_apply_discount():
+    assert apply_discount(100, 10) == 90
+```
+
+**Powerful** — parametrizes, hits boundaries, and *flags the missing validation*:
+
+```python
+import pytest
+
+@pytest.mark.parametrize("price, pct, expected", [
+    (100, 0, 100),    # no discount
+    (100, 100, 0),    # full discount
+    (100, 10, 90),    # typical
+])
+def test_valid(price, pct, expected):
+    assert apply_discount(price, pct) == pytest.approx(expected)
+
+def test_negative_pct_is_unhandled():
+    # surfaces a DESIGN gap: the function never validates input
+    assert apply_discount(100, -5) == 105  # silently inflates price!
+```
+
+> The Powerful model didn't just test — it found a bug in the code under test.
+
+---
+
+## Output impact: performance / SQL
+
+**Prompt:** *"Make this query faster."*
+
+```sql
+SELECT * FROM orders WHERE DATE(created_at) = '2026-06-01';
+```
+
+**Lightweight** — trims columns, misses the real problem:
+
+```sql
+SELECT id, customer_id, total
+FROM orders WHERE DATE(created_at) = '2026-06-01';  -- still can't use an index
+```
+
+**Powerful** — spots that wrapping the column in `DATE()` makes the predicate *non-sargable* (defeats any index), and rewrites to a range scan:
+
+```sql
+SELECT id, customer_id, total
+FROM orders
+WHERE created_at >= '2026-06-01'
+  AND created_at <  '2026-06-02';
+-- + recommends: CREATE INDEX idx_orders_created_at ON orders (created_at);
+```
+
+Same prompt — the cheaper model fixed *style*, the powerful model fixed the **query plan**.
+
+---
+
+## Output impact: a vague bug report
+
+**Prompt:** *"Users get logged out randomly. Here's the session middleware."*
+
+**Lightweight** — latches onto the most literal lever:
+
+> "Increase the session timeout from 30 to 120 minutes."
+
+**Powerful** — treats "randomly" as a clue and forms ranked hypotheses:
+
+> 1. **Load balancer without sticky sessions** — requests hit nodes that don't share session state (most likely given "random").
+> 2. **Token-refresh race** — concurrent tabs invalidate each other's refresh token.
+> 3. **Clock skew** across nodes expiring JWTs early.
+>
+> "Before changing timeouts, check whether logouts correlate with which node served the request."
+
+> On **ambiguous** problems, the tier difference is *diagnostic quality*, not syntax.
+
+---
+
+## Escalation in action
+
+The selection process isn't one-shot — it's a cheap-first loop.
+
+```text
+1. Start: Sonnet 4.6 / GPT-4.1  (Versatile)
+   Prompt: "Fix the failing test in checkout."
+   -> proposes a fix. You run tests. Still red on a boundary case.
+
+2. Re-prompt same model with the failure output.
+   -> second attempt, still misses the off-by-one in date handling.
+
+3. ESCALATE: Opus 4.8 / GPT-5.5  (Powerful)
+   -> identifies a timezone/midnight-boundary bug the
+      cheaper model kept pattern-matching past. Tests pass.
+```
+
+You spent Powerful tokens on **one** turn, not the whole session. That's the point of starting cheap: you only pay for depth when depth is actually required.
+
+---
+
+## When a bigger model does NOT help
+
+Escalating is not free and not always better. A Powerful model gives **no meaningful uplift** when the task is:
+
+- Boilerplate, scaffolding, or CRUD that follows an obvious pattern
+- Formatting, linting fixes, or import organization
+- Renaming / mechanical refactors with a single correct result
+- Short, verifiable snippets you can eyeball in seconds
+- Generating commit messages, docstrings, or simple README sections
+
+For these, a bigger model often just produces **more words and more output tokens** for the same correct answer — paying a premium for verbosity.
+
+> Bigger ≠ better. Bigger = *deeper reasoning*, which only pays off when the task needs it.
+
+---
+
 ## Decision tree — GPT family
 
 ```text
