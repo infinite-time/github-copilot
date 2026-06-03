@@ -8,8 +8,6 @@ title: "GitHub Copilot: Tokens & Model Selection"
 # GitHub Copilot
 ## Tokens, Token Sizing & Model Selection
 
-A practical session for software engineers
-
 *Why your model choice now shows up directly on the bill.*
 
 ---
