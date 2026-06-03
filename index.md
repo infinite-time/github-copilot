@@ -5,7 +5,7 @@ paginate: true
 title: "GitHub Copilot: Tokens & Model Selection"
 style: |
   section {
-    font-size: 21px;
+    font-size: 18px;
     padding: 48px 56px;
     justify-content: flex-start;
   }
